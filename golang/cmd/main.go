@@ -37,17 +37,19 @@ const (
 
 func main() {
 	ctx, ctxCancelFn := context.WithCancel(context.Background())
+
 	// Запуск генератора задач
 	generator := generator.Generator{
 		TasksPoolSize: 10,
 	}
 	tasksChan := generator.Generate(ctx)
 
-	// Основные каналы и группы ожидания
+	// Основные каналы и группа ожидания
 	successChan := make(chan task.Task, generator.TasksPoolSize/2)
 	errorChan := make(chan task.Task, generator.TasksPoolSize/2)
 	wg := &sync.WaitGroup{}
 
+	// Запускаем группу воркеров
 	go func() {
 		for i := 0; i < workerPoolSize; i++ {
 			wg.Add(1)
@@ -80,8 +82,8 @@ func main() {
 
 	// Ожидаем завершения всех воркеров
 	wg.Wait()
-	close(successChan) // Закрываем канал успешных задач после завершения воркеров
-	close(errorChan)   // Закрываем канал ошибочных задач после завершения воркеров
+	close(successChan)
+	close(errorChan)
 
 	fmt.Println("All tasks processed and results printed.")
 }

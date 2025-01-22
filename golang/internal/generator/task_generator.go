@@ -8,7 +8,7 @@ import (
 )
 
 type Generator struct {
-	TasksPoolSize int
+	TasksPoolSize int // Размер буфера для канала задач
 }
 
 func (g Generator) Generate(ctx context.Context) <-chan task.Task {
@@ -26,19 +26,18 @@ func (g Generator) Generate(ctx context.Context) <-chan task.Task {
 				// Время создания задачи
 				creationTime := time.Now().Format(time.RFC3339)
 
-				// Условие для ошибочных задач (Если ОС Windows то точнось вычесления Nanosecond оставляем желать лучшего, и ошибочные таски не появляются)
-				if time.Now().Nanosecond()%2 > 0 {
+				// Условие для ошибочных задач (Nanosconds заменено на Seconds т.к. Windwos не обладает достаточной точностью вычисления наносекунд, и всегда оставляет на конце два ноля)
+				if time.Now().Second()%2 > 0 {
 					creationTime = "Some error occurred"
 				}
 
-				// Передаем задачу в канал
 				tasksCh <- task.Task{
 					ID:        id,
 					CreatedAt: creationTime,
 				}
 
 				id++
-				time.Sleep(time.Millisecond * 250)
+				time.Sleep(time.Millisecond * 150) // Симуляция работы
 			}
 		}
 	}()
