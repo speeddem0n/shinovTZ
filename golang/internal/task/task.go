@@ -9,7 +9,7 @@ type Task struct {
 	Result     []byte // Результат
 }
 
-// Метод для вывода всей информации о задаче в строке
+// Метод приведения объекта к строке
 func (t Task) String() string {
 	return fmt.Sprintf("ID: %d, CreatedAt: %s, FinishedAt: %s, Result: %s", t.ID, t.CreatedAt, t.FinishedAt, t.Result)
 }

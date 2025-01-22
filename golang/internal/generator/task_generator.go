@@ -37,7 +37,7 @@ func (g Generator) Generate(ctx context.Context) <-chan task.Task {
 				}
 
 				id++
-				time.Sleep(time.Millisecond * 150) // Симуляция работы
+				time.Sleep(time.Millisecond * 150)
 			}
 		}
 	}()
