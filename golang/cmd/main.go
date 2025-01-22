@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"time"
+
+	"github.com/speeddem0n/shinovTZ/internal/generator"
+	"github.com/speeddem0n/shinovTZ/internal/printer"
+	"github.com/speeddem0n/shinovTZ/internal/task"
+	"github.com/speeddem0n/shinovTZ/internal/worker"
 )
 
 // Приложение эмулирует получение и обработку неких тасков. Пытается и получать, и обрабатывать в многопоточном режиме.
@@ -24,91 +31,57 @@ import (
 
 // Мы не даем комментариев по результатам тестового задания. Если в случае отказа вам нужен наш комментарий по результатам тестового задания, то просим об этом написать вместе с откликом.
 
-// A Ttype represents a meaninglessness of our life
-type Ttype struct {
-	id         int
-	cT         string // время создания
-	fT         string // время выполнения
-	taskRESULT []byte
-}
+const (
+	workerPoolSize = 5
+)
 
 func main() {
-	taskCreturer := func(a chan Ttype) {
-		go func() {
-			for {
-				ft := time.Now().Format(time.RFC3339)
-				if time.Now().Nanosecond()%2 > 0 { // вот такое условие появления ошибочных тасков
-					ft = "Some error occured"
-				}
-				a <- Ttype{cT: ft, id: int(time.Now().Unix())} // передаем таск на выполнение
-			}
-		}()
+	ctx, ctxCancelFn := context.WithCancel(context.Background())
+	// Запуск генератора задач
+	generator := generator.Generator{
+		TasksPoolSize: 10,
 	}
+	tasksChan := generator.Generate(ctx)
 
-	superChan := make(chan Ttype, 10)
-
-	go taskCreturer(superChan)
-
-	task_worker := func(a Ttype) Ttype {
-		tt, _ := time.Parse(time.RFC3339, a.cT)
-		if tt.After(time.Now().Add(-20 * time.Second)) {
-			a.taskRESULT = []byte("task has been successed")
-		} else {
-			a.taskRESULT = []byte("something went wrong")
-		}
-		a.fT = time.Now().Format(time.RFC3339Nano)
-
-		time.Sleep(time.Millisecond * 150)
-
-		return a
-	}
-
-	doneTasks := make(chan Ttype)
-	undoneTasks := make(chan error)
-
-	tasksorter := func(t Ttype) {
-		if string(t.taskRESULT[14:]) == "successed" {
-			doneTasks <- t
-		} else {
-			undoneTasks <- fmt.Errorf("Task id %d time %s, error %s", t.id, t.cT, t.taskRESULT)
-		}
-	}
+	// Основные каналы и группы ожидания
+	successChan := make(chan task.Task, generator.TasksPoolSize/2)
+	errorChan := make(chan task.Task, generator.TasksPoolSize/2)
+	wg := &sync.WaitGroup{}
 
 	go func() {
-		// получение тасков
-		for t := range superChan {
-			t = task_worker(t)
-			go tasksorter(t)
+		for i := 0; i < workerPoolSize; i++ {
+			wg.Add(1)
+
+			go worker.Worker{
+				TasksChan:        tasksChan,
+				SuccessTasksChan: successChan,
+				ErrorTasksChan:   errorChan,
+			}.Work(wg)
 		}
-		close(superChan)
 	}()
 
-	result := map[int]Ttype{}
-	err := []error{}
-	go func() {
-		for r := range doneTasks {
-			go func() {
-				result[r.id] = r
-			}()
-		}
-		for r := range undoneTasks {
-			go func() {
-				err = append(err, r)
-			}()
-		}
-		close(doneTasks)
-		close(undoneTasks)
-	}()
-
-	time.Sleep(time.Second * 3)
-
-	println("Errors:")
-	for r := range err {
-		println(r)
+	// Запуск принтера успешных задач
+	successfulTasksPrinter := printer.Printer{
+		Header:    "==== Successful Tasks ===",
+		TasksChan: successChan,
 	}
+	go successfulTasksPrinter.Print()
 
-	println("Done tasks:")
-	for r := range result {
-		println(r)
+	// Запуск принтера ошибочных задач
+	erroredTasksPrinter := printer.Printer{
+		Header:    "===== Errored Tasks =====",
+		TasksChan: errorChan,
 	}
+	go erroredTasksPrinter.Print()
+
+	// Работать ровно 10 секунд
+	time.Sleep(10 * time.Second)
+	ctxCancelFn()
+
+	// Ожидаем завершения всех воркеров
+	wg.Wait()
+	close(successChan) // Закрываем канал успешных задач после завершения воркеров
+	close(errorChan)   // Закрываем канал ошибочных задач после завершения воркеров
+
+	fmt.Println("All tasks processed and results printed.")
 }
